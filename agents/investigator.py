@@ -1,17 +1,24 @@
+import os
 import json
 from typing import Annotated, TypedDict, List, Dict, Any
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_community.llms import Ollama 
+from langchain_ollama import OllamaLLM
 from langchain_community.vectorstores import Neo4jVector
-from langchain_community.graphs import Neo4jGraph
+from langchain_neo4j import Neo4jGraph
 from dotenv import load_dotenv
 load_dotenv() 
 
 
-llm = Ollama(model="llama3", temperature=0.0)
-graph = Neo4jGraph()
+
+llm = OllamaLLM(model="llama3", temperature=0.0)
+graph = Neo4jGraph(
+    url=os.getenv("neo4j://127.0.0.1:7687"),
+    username=os.getenv("NEO4J_USERNAME"),
+    password=os.getenv("Vaish@22"),
+    database=os.getenv("bank-transactions")
+)
 
 
 class AgentState(TypedDict):
