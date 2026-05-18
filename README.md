@@ -9,3 +9,13 @@ This is a multi agent RAG system used using LangGraph which makes automated SAR'
   "timestamp": "2026-05-18T00:45:12Z",
   "raw_payload": "CRITICAL: Velocity check failed for terminal Txn_Ref_88192. Node point localized to customer routing ledger tracking account number: ACC-7731920. Pattern flag: Structuring/High-frequency automated transfers detected. Immediate compliance review triggered."
 }
+
+# investogator.py will output a graph json
+
+# The scout.py will imput this json and analyze it against a vector database and then output a json in the format of:
+{
+  "matched_typology": "Structuring",
+  "confidence_score": 0.92,
+  "justification": "The entity exhibits high-frequency automated transfers just below reporting thresholds...",
+  "supporting_nodes": [1, 2]
+}
