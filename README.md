@@ -1,6 +1,27 @@
-🏦 SAR Autonomous Intelligence Unit (Multi-Agent RAG System)
+# 🏦 SAR Autonomous Intelligence Unit (Multi-Agent RAG System)
 
 An enterprise-grade, multi-agent AI system built with **LangGraph**, **FastAPI**, **Neo4j**, and **ChromaDB**. This system automates the investigation and drafting of Suspicious Activity Reports (SARs) for financial institutions, drastically reducing compliance review times from hours to seconds.
+
+---
+
+## 🏃‍♂️ Running the System
+
+1. Seed the Vector Database (ChromaDB):
+Before running the pipeline, initialize the local RAG knowledge base containing AML compliance laws.
+
+```bash
+python data_ingestion/seed_chroma.py
+```
+2. Start the FastAPI Server:
+Boot up the backend microservice to expose the /api/investigate endpoint.
+
+```bash
+python api.py
+```
+
+The API will now be live at http://localhost:8000. You can visit http://localhost:8000/docs to test the API directly using Swagger UI.
+
+---
 
 ## System Architecture & Workflow
 
@@ -24,20 +45,22 @@ The system is activated by a standard JSON payload from a core banking system:
   "timestamp": "2026-05-18T00:45:12Z",
   "raw_payload": "CRITICAL: Velocity check failed for terminal Txn_Ref_88192. Node point localized to customer routing ledger tracking account number: ACC-7731920. Pattern flag: Structuring/High-frequency automated transfers detected."
 }
-
+```
 ### 2. Mid-Pipeline Data (Scout Agent Output)
 The Scout Agent maps the behavior to local laws using RAG and outputs structured Pydantic objects:
-
+```json
 {
   "matched_typology": "Structuring / Smurfing",
   "confidence_score": 0.95,
   "justification": "The entity exhibits high-frequency automated transfers just below reporting thresholds, converging on a single ATM terminal node.",
   "supporting_nodes": ["N1", "N2", "N3"]
 }
+```
 
 ### 3. Final Artifact (Generated SAR & Audit Approval)
 The pipeline returns a clean UI package via REST API, including the audited narrative and a graph-to-text linkage map for interactive frontend highlighting:
 
+```json
 {
   "audit_result": {
     "approved": true,
@@ -50,8 +73,10 @@ The pipeline returns a clean UI package via REST API, including the audited narr
     "N2": "Paragraph 2"
   }
 }
+```
 
-⚙️ Prerequisites
+---
+## ⚙️ Prerequisites
 To run this repository locally, you will need:
 
 Python 3.9+
@@ -62,37 +87,24 @@ Ollama (Installed locally with GPU acceleration recommended)
 
 Required Models: Pull via terminal using ollama pull llama3 (and/or mistral)
 
-🚀 Local Setup & Installation
-1. Clone the repository:
-git clone [https://github.com/yourusername/SAR-SUSPICIOUS-ACTIVITY-REPORT-MULTI-AGENT-SYSTEM.git](https://github.com/yourusername/SAR-SUSPICIOUS-ACTIVITY-REPORT-MULTI-AGENT-SYSTEM.git)
 
+```python
+import foobar
 
+# returns 'words'
+foobar.pluralize('word')
 
-2. Create a virtual environment and install dependencies:
-python -m venv venv
-# On Windows use: venv\Scripts\activate
-# On Mac/Linux use: source venv/bin/activate
-pip install -r requirements.txt
+# returns 'geese'
+foobar.pluralize('goose')
 
-(Required packages: langgraph, langchain-ollama, langchain-neo4j, langchain-chroma, fastapi, uvicorn, pydantic)
+# returns 'phenomenon'
+foobar.singularize('phenomena')
+```
 
-3. Configure Environment Variables:
-Create a .env file in the root directory and add your Neo4j credentials:
+## Contributing
 
-NEO4J_URI=neo4j://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=your_secure_password
-NEO4J_DATABASE=bank-transactions
+Pull requests are welcome. For major changes, please open an issue first
+to discuss what you would like to change.
 
-🏃‍♂️ Running the System
-1. Seed the Vector Database (ChromaDB):
-Before running the pipeline, initialize the local RAG knowledge base containing AML compliance laws.
+Please make sure to update tests as appropriate.
 
-python data_ingestion/seed_chroma.py
-
-2. Start the FastAPI Server:
-Boot up the backend microservice to expose the /api/investigate endpoint.
-
-python api.py
-
-The API will now be live at http://localhost:8000. You can visit http://localhost:8000/docs to test the API directly using Swagger UI.
