@@ -28,7 +28,7 @@ class AlertPayload(BaseModel):
 
 #Create the main POST endpoint
 @app.post("/api/investigate")
-async def trigger_investigation(alert: AlertPayload):
+def trigger_investigation(alert: AlertPayload):
     print(f"🚀 Incoming Alert Received from UI: {alert.alert_id} for Account {alert.account_number}")
     
     # Map the incoming API data to your LangGraph state structure

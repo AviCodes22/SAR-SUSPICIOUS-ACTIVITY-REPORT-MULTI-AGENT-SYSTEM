@@ -125,32 +125,21 @@ def generate_formal_narrative(state: AgentState) -> Dict[str, Any]:
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", (
-            "You are an expert Anti-Money Laundering (AML) Compliance Officer writing an official report "
-            "for the Financial Intelligence Unit (FIU). Convert transactional analysis into a formal "
-            "Suspicious Transaction Report narrative.\n\n"
-            "Your text MUST follow a strict 5-paragraph structure:\n"
-            "Paragraph 1: Subject Overview and account operational setup details.\n"
-            "Paragraph 2: Typology Match reasoning matching the behavior pattern ruleset.\n"
-            "Paragraph 3: Transaction Flow Forensics (explicit node tracking analysis).\n"
-            "Paragraph 4: Documentation Gaps, KYC discrepancies, and compliance observations.\n"
-            "Paragraph 5: Final Compliance Action Recommendation.\n\n"
-            "Data Inputs for Compilation Context:\n"
-            "- Analytical Findings from Typology Scout: {analytical_findings}\n"
-            "- Target Form Fields Metadata: {form_metadata}\n"
-            "- Graph Topology Node IDs: {graph_json}\n\n"
-            "Output Constraints:\n"
-            "1. Reference Graph Node IDs directly in your text paragraphs (e.g., 'Account node [1] initiated multiple structured bursts to ATM node [4]').\n"
-            "2. Keep the narrative objective, highly factual, and completely free of conversational remarks.\n"
-            "3. Return your response strictly as a valid JSON object matching this schema:\n"
-            "{{\n"
-            "  'narrative': 'The full 5-paragraph text here.',\n"
-            "  'forensic_linkages': {{\n"
-            "     'Node_ID_From_Graph_JSON_Here': 'Paragraph string or integer number where it was referenced'\n"
-            "  }}\n"
-            "}}\n"
-            "Do not output markdown code ticks (```json) or introductory prose. Return only raw JSON string data."
+            "You are a Senior Financial Crime Analyst writing an official Suspicious Activity Report (SAR). "
+            "You MUST output your response strictly as a JSON object with 'narrative' and 'forensic_linkages' keys. "
+            "\n\nCRITICAL NARRATIVE FORMATTING RULES: "
+            "\n1. You MUST use Markdown headers (###) for every paragraph title."
+            "\n2. You MUST use DOUBLE NEWLINES (\\n\\n) to separate every single paragraph. "
+            "\n3. Explain the fraud plainly! Do not just use jargon. Explain that the suspect is deliberately "
+            "breaking up large sums of money into smaller chunks to bypass legal tax/reporting thresholds."
+            "\n\nSTRUCTURE YOUR 5 PARAGRAPHS LIKE THIS:"
+            "\n### 1. Executive Summary"
+            "\n### 2. The Suspected Crime (Explain it simply)"
+            "\n### 3. Transaction Forensics"
+            "\n### 4. KYC & Documentation Gaps"
+            "\n### 5. Final Recommendation"
         )),
-        ("human", "Draft the formal STR text summary and compile the UI auditability node interaction link map.")
+        ("human", "Write the SAR using this data:\nFindings: {analytical_findings}\nGraph: {graph_json}")
     ])
     
     # Simple, explicit Mistral chain execution
