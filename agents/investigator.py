@@ -1,4 +1,3 @@
-# agents/investigator.py
 import os
 import json
 from typing import Annotated, TypedDict, List, Dict, Any
