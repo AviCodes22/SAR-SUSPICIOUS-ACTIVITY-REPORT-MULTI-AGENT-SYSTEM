@@ -11,16 +11,21 @@ from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import OllamaLLM
+from langchain_core.prompts import PromptTemplate
 
 # =====================================================================
 # 1. Direct Mistral Local Initialization
 # =====================================================================
+# GPU configs removed per your instruction. Added safe context limits.
 llm = OllamaLLM(
     model="llama3.2", 
     temperature=0.1, 
     format="json",
-    num_gpu=-1 
+    num_predict=2048,
+    num_ctx=4096,
+    additional_kwargs={"num_predict": 2048, "num_ctx": 4096}
 )
+
 # =====================================================================
 # 2. Unified Multi-Agent State Definition
 # =====================================================================
@@ -94,44 +99,36 @@ def prep_str_form_fields(state: AgentState) -> Dict[str, Any]:
 
 
 def generate_formal_narrative(state: AgentState) -> Dict[str, Any]:
+    print("--- DRAFTER AGENT ACTIVATED ---")
     
     typology_json = json.dumps(state.get("typology_reasoning", {}))
     graph_json = json.dumps(state.get("graph_visualization", {}))
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", (
-            "You are a Lead AML Compliance Officer at an Indian Bank. Your job is to draft an official "
-            "FIU-IND Suspicious Transaction Report (STR). "
-            "You MUST output your response strictly as a JSON object with 'narrative' and 'forensic_linkages' keys. "
-            "\n\nCRITICAL NARRATIVE FORMATTING RULES: "
-            "\n1. You MUST use Markdown headers (###) for every part of the form."
-            "\n2. DO NOT write paragraphs where lists are required."
-            "\n\nSTRUCTURE THE REPORT EXACTLY LIKE THIS FIU-IND STR FORM:"
-            "\n### PART 1: DETAILS OF REPORT"
-            "\n- Date of sending report: [Current Date]"
-            "\n- Is this a replacement report?: No"
-            "\n\n### PART 2 & 3: PRINCIPAL OFFICER & BRANCH"
-            "\n- Name of Bank: HDFC Bank (Simulated)"
-            "\n- Name of Principal Officer: System Auto-Generated"
-            "\n- Branch: Pune Main Branch"
-            "\n\n### PART 4 & 5: LIST OF INDIVIDUALS / ENTITIES LINKED TO TRANSACTIONS"
-            "\n[List the names and roles of the nodes found in the graph]"
-            "\n\n### PART 6: LIST OF ACCOUNTS"
-            "\n[List the specific Account IDs from the graph]"
-            "\n\n### PART 7: DETAILS OF SUSPICIOUS TRANSACTION"
-            "\n**7.1 Reasons for suspicion:** [State the RAG typology match, e.g., Value of transaction, Activity in account, etc.]"
-            "\n**7.2 Grounds of Suspicion:** [Write a clear, simple 2-paragraph explanation of how the suspect is moving the money, avoiding jargon. Explain the crime.]"
-            "\n\n### PART 8: DETAILS OF ACTION TAKEN"
-            "\n[Write the final recommendation, e.g., Freeze account pending FIU-IND review]"
+            "You are an expert Financial Investigator drafting an FIU-IND Suspicious Transaction Report. "
+            "You MUST output your response strictly as a flat JSON object. "
+            "DO NOT use markdown. DO NOT use nested objects. "
+            "Ensure all text is formatted cleanly without carriage returns inside strings. "
+            "\n\nCRITICAL: Use EXACTLY these keys in your JSON object:"
+            "\n- part_1_date: The current date (YYYY-MM-DD)"
+            "\n- part_1_replacement: 'No'"
+            "\n- part_2_bank: 'HDFC Bank (Simulated)'"
+            "\n- part_2_officer: 'System Auto-Generated'"
+            "\n- part_3_branch: 'Pune Main Branch'"
+            "\n- part_4_individuals: [Array of strings listing the names of individuals found in the graph]"
+            "\n- part_5_entities: [Array of strings listing merchant or ATM names found in the graph]"
+            "\n- part_6_accounts: [Array of strings listing the exact raw account numbers/IDs from the graph]"
+            "\n- part_7_reason: Provide a short category like 'Smurfing', 'Velocity', or 'Structuring'"
+            "\n- part_7_grounds: Provide a detailed, continuous paragraph explaining the transaction flow without line breaks."
+            "\n- part_8_action: 'Freeze account pending FIU-IND review'"
         )),
-        ("human", "Write the FIU-IND STR using this data:\nFindings: {analytical_findings}\nGraph: {graph_json}")
+        ("human", "Draft the FIU-IND STR JSON using this data:\nFindings: {analytical_findings}\nGraph: {graph_json}")
     ])
     
-   
-    print("✍️ Invoking local Llama model via GPU...")
+    print("✍️ Invoking local Llama model for strict JSON drafting...")
     chain = prompt | llm
     
-    # Store the result directly into ai_raw_response
     ai_raw_response = chain.invoke({
         "analytical_findings": typology_json, 
         "graph_json": graph_json
@@ -139,52 +136,37 @@ def generate_formal_narrative(state: AgentState) -> Dict[str, Any]:
     
     raw_text = ai_raw_response.strip()
     
-    # Clean up outer markdown block wrappers if present
+    # Strip markdown wrappers if the model ignores the prompt and hallucinates them
     if raw_text.startswith("```json"):
         raw_text = raw_text[7:-3].strip()
     elif raw_text.startswith("```"):
         raw_text = raw_text[3:-3].strip()
 
     try:
-        # Standard attempt
+        # Standard attempt - Because format="json" is enabled, this will almost always succeed
         report_payload = json.loads(raw_text)
-        print("✅ Drafter successfully parsed compliance report JSON object.")
-    except Exception:
-        try:
-            # Secondary repair: Escape real carriage breaks that break JSON tokenization
-            fixed_raw = raw_text.replace("\n", "\\n").replace("\r", "\\r")
-            fixed_raw = fixed_raw.replace("\\\\n", "\\n")
-            
-            # Isolate the core JSON braces if surrounding text exists
-            match = re.search(r"\{.*\}", fixed_raw, re.DOTALL)
-            if match:
-                report_payload = json.loads(match.group(0))
-            else:
-                raise ValueError("No JSON boundaries found.")
-        except Exception as fallback_err:
-            print(f"⚠️ Defensive regex patch engaged due to complex string formatting: {fallback_err}")
-            
-            # Direct text extraction backup: If it contains structural markers, use the text natively!
-            clean_narrative = raw_text
-            if '"narrative"' in raw_text:
-                try:
-                    start_idx = raw_text.find('"narrative"') + 11
-                    while raw_text[start_idx] in [':', ' ', '"', '\n']:
-                        start_idx += 1
-                    end_idx = raw_text.find('"forensic_linkages"')
-                    if end_idx != -1:
-                        clean_narrative = raw_text[start_idx:end_idx].strip().rstrip(',').rstrip('"').strip()
-                except Exception:
-                    pass
-            
-            report_payload = {
-                "narrative": clean_narrative,
-                "forensic_linkages": {"100428660": "PART 6"}
-            }
+        print("✅ Drafter successfully generated strict UI schema.")
+    except Exception as e:
+        print(f"⚠️ JSON parsing error: {e}. Falling back to default schema to prevent API crash.")
+        # Failsafe so the API never crashes and the UI always renders a valid object
+        report_payload = {
+            "part_1_date": time.strftime("%Y-%m-%d"),
+            "part_1_replacement": "No",
+            "part_2_bank": "System Malfunction",
+            "part_2_officer": "Error Handler",
+            "part_3_branch": "Unknown",
+            "part_4_individuals": ["Error retrieving individuals"],
+            "part_5_entities": ["Error retrieving entities"],
+            "part_6_accounts": ["Error"],
+            "part_7_reason": "Data Extraction Failure",
+            "part_7_grounds": f"The language model failed to return a valid JSON format. Raw output was: {raw_text[:100]}...",
+            "part_8_action": "Manual review required"
+        }
         
     return {
-        "narrative_draft": report_payload.get("narrative", raw_text).replace("\\n", "\n"),
-        "forensic_linkages": report_payload.get("forensic_linkages", {})
+        # Store the payload as a string so the state schema (narrative_draft: str) remains unbroken for downstream agents
+        "narrative_draft": json.dumps(report_payload),
+        "forensic_linkages": {} # Handled natively by frontend React Flow logic now
     }
 
 # =====================================================================
@@ -206,7 +188,7 @@ drafter_agent = drafter_workflow.compile()
 # 5. Local Standalone Test Verification Execution
 # =====================================================================
 if __name__ == "__main__":
-    print("Initializing Drafter Agent framework using local Mistral model...")
+    print("Initializing Drafter Agent framework using local Llama model...")
     
     mock_scout_reasoning = {
         "matched_typology": "Structuring / Smurfing Pattern Detected",
@@ -216,18 +198,18 @@ if __name__ == "__main__":
     
     mock_graph_visualization = {
         "nodes": [
-            {"id": "ACC-7731920", "labels": ["Account"], "properties": {"holder": "Avdhoot Patil", "status": "Flagged"}},
+            {"id": "100428660", "labels": ["Account"], "properties": {"holder": "Avdhoot Patil", "status": "Flagged"}},
             {"id": "NODE_ATM_4", "labels": ["ATM"], "properties": {"location": "Pune, MH"}}
         ],
         "edges": [
-            {"id": "E402", "type": "ATM_WITHDRAWAL", "source": "ACC-7731920", "target": "NODE_ATM_4", "properties": {"amount": 49500}}
+            {"id": "E402", "type": "ATM_WITHDRAWAL", "source": "100428660", "target": "NODE_ATM_4", "properties": {"amount": 49500}}
         ]
     }
 
     initial_test_state = {
         "messages": [],
-        "raw_alert": {"account_number": "ACC-7731920", "risk_type": "High-Frequency Automated Structuring"},
-        "alert_details": {"account_number": "ACC-7731920", "risk_type": "High-Frequency Automated Structuring"},
+        "raw_alert": {"account_number": "100428660", "risk_type": "High-Frequency Automated Structuring"},
+        "alert_details": {"account_number": "100428660", "risk_type": "High-Frequency Automated Structuring"},
         "generated_query": "MATCH paths... RETURN lists",
         "graph_visualization": mock_graph_visualization,
         "typology_reasoning": mock_scout_reasoning,
@@ -240,16 +222,7 @@ if __name__ == "__main__":
     final_output = drafter_agent.invoke(initial_test_state)
     
     print("\n=====================================================================")
-    print("STRUCTURED FORM METADATA GENERATION")
+    print("FINAL STR JSON UI PAYLOAD")
     print("=====================================================================")
-    print(json.dumps(final_output["str_form_data"], indent=2))
-    
-    print("\n=====================================================================")
-    print("FORENSIC UI HOVER LINKAGES MAP")
-    print("=====================================================================")
-    print(json.dumps(final_output["forensic_linkages"], indent=2))
-
-    print("\n=====================================================================")
-    print("FINAL 5-PARAGRAPH SUSPICIOUS TRANSACTION REPORT NARRATIVE DRAFT")
-    print("=====================================================================")
-    print(final_output["narrative_draft"])
+    # Format the stringified JSON back into a readable dict for the terminal output
+    print(json.dumps(json.loads(final_output["narrative_draft"]), indent=2))

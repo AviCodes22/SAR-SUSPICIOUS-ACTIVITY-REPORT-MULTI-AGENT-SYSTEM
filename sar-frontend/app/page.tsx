@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useReactToPrint } from 'react-to-print';
 import axios from 'axios';
 import ReactFlow, { 
   Background, 
@@ -11,19 +12,20 @@ import ReactFlow, {
   applyEdgeChanges,
   NodeChange,
   EdgeChange
-} from 'reactflow';
+} 
+
+
+from 'reactflow';
 import 'reactflow/dist/style.css';
-import ReactMarkdown from 'react-markdown';
-import { ShieldAlert, Activity, FileText } from 'lucide-react';
+import { ShieldAlert, Activity, FileText, Download } from 'lucide-react';
 
 export default function Dashboard() {
   // UI STATE
   const [loading, setLoading] = useState(false);
-  const [activeParagraphs, setActiveParagraphs] = useState<string[]>([]);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   
   // DATA STATE
-  const [reportText, setReportText] = useState<string>("Awaiting investigation payload...");
-  const [linkageMap, setLinkageMap] = useState<Record<string, string>>({});
+  const [reportData, setReportData] = useState<any>(null);
   const [auditResult, setAuditResult] = useState<any>(null);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
@@ -31,6 +33,13 @@ export default function Dashboard() {
   // REACT FLOW HANDLERS
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), []);
   const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)), []);
+
+  // PDF EXPORT HOOK
+  const reportRef = useRef<HTMLDivElement>(null);
+  const handlePrint = useReactToPrint({
+    contentRef: reportRef,
+    documentTitle: `FIU_IND_STR_${new Date().toISOString().split('T')[0]}`,
+  });
 
   // API INVESTIGATION HANDLER
   const runInvestigation = async () => {
@@ -48,8 +57,15 @@ export default function Dashboard() {
       });
       
       const data = response.data;
-      setReportText(data.final_report_markdown);
-      setLinkageMap(data.ui_linkage_map);
+      
+      // Parse the new JSON string coming from the Drafter
+      try {
+        const parsedReport = JSON.parse(data.final_report_markdown);
+        setReportData(parsedReport);
+      } catch (e) {
+        console.error("Failed to parse report JSON", e);
+      }
+      
       setAuditResult(data.audit_result);
 
       // NODE FORMATTING
@@ -69,9 +85,13 @@ export default function Dashboard() {
         }
 
         return {
-          id: n.id,
+          id: String(n.id), // Ensure ID is a string for hover matching
           position: { x: 100 + (index * 250), y: 100 + (index * 150) }, 
-          data: { label: `${n.labels[0]}\n${n.properties.name || n.id}` }, 
+          data: { 
+            label: `${n.labels[0]}\n${n.properties.name || n.id}`,
+            originalBg: bgColor,
+            originalBorder: borderColor
+          }, 
           style: { 
             background: bgColor, 
             color: 'white', 
@@ -79,7 +99,8 @@ export default function Dashboard() {
             borderRadius: '12px', 
             padding: '15px',
             fontWeight: 'bold',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.5)'
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.5)',
+            transition: 'all 0.3s ease'
           }
         };
       });
@@ -87,8 +108,8 @@ export default function Dashboard() {
       // EDGE FORMATTING
       const formattedEdges = data.graph_data.edges.map((e: any) => ({
         id: e.id,
-        source: e.source,
-        target: e.target,
+        source: String(e.source),
+        target: String(e.target),
         label: e.type,
         animated: true,
         style: { stroke: '#3b82f6' }
@@ -99,26 +120,31 @@ export default function Dashboard() {
 
     } catch (error) {
       console.error("Investigation failed:", error);
-      setReportText("⚠️ Critical Error: Could not connect to Python backend.");
     }
     setLoading(false);
   };
 
-  // NODE CLICK HANDLER
-  const handleNodeClick = (event: any, node: Node) => {
-    const linkedParagraphsStr = linkageMap[node.id]; 
-    if (linkedParagraphsStr) {
-      const paragraphs = linkedParagraphsStr.split(',').map(s => s.trim());
-      setActiveParagraphs(paragraphs);
-    } else {
-      setActiveParagraphs([]);
-    }
-  };
-
-  // PANE CLICK HANDLER
-  const handlePaneClick = () => {
-    setActiveParagraphs([]);
-  };
+  // HOVER EFFECT HOOK
+  // Dynamically dims non-hovered nodes and glows the hovered node
+  useEffect(() => {
+    setNodes((currentNodes) => 
+      currentNodes.map((node) => {
+        const isHovered = hoveredNodeId === node.id;
+        const isDimmed = hoveredNodeId !== null && !isHovered;
+        
+        return {
+          ...node,
+          style: {
+            ...node.style,
+            opacity: isDimmed ? 0.3 : 1,
+            boxShadow: isHovered ? '0 0 20px #3b82f6' : '0 4px 6px -1px rgba(0, 0, 0, 0.5)',
+            border: `2px solid ${isHovered ? '#60a5fa' : node.data.originalBorder}`,
+            transform: isHovered ? 'scale(1.05)' : 'scale(1)'
+          }
+        };
+      })
+    );
+  }, [hoveredNodeId]);
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200">
@@ -129,19 +155,31 @@ export default function Dashboard() {
           <ShieldAlert className="text-blue-500 w-8 h-8" />
           <h1 className="text-xl font-bold tracking-wider">SAR AUTONOMOUS INTELLIGENCE UNIT</h1>
         </div>
-        <button 
-          onClick={runInvestigation}
-          disabled={loading}
-          className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-md font-semibold transition-all disabled:opacity-50"
-        >
-          {loading ? "Agents Investigating..." : "Launch Investigation"}
-        </button>
+        
+        <div className="flex gap-4">
+          {/* PDF EXPORT BUTTON */}
+          <button 
+            onClick={() => handlePrint()}
+            disabled={!reportData}
+            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-md font-semibold transition-all disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" /> Export PDF
+          </button>
+
+          <button 
+            onClick={runInvestigation}
+            disabled={loading}
+            className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-md font-semibold transition-all disabled:opacity-50"
+          >
+            {loading ? "Agents Investigating..." : "Launch Investigation"}
+          </button>
+        </div>
       </header>
 
       {/* SPLIT WINDOW LAYOUT */}
       <div className="flex flex-1 overflow-hidden">
         
-        {/* LEFT PANEL */}
+        {/* LEFT PANEL: GRAPH */}
         <div className="w-1/2 border-r border-slate-800 relative bg-slate-950">
           <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-slate-900/80 p-2 rounded-md border border-slate-700">
             <Activity className="text-emerald-400 w-5 h-5" />
@@ -153,8 +191,6 @@ export default function Dashboard() {
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
-            onNodeClick={handleNodeClick}
-            onPaneClick={handlePaneClick}
             fitView
             className="dark"
           >
@@ -163,44 +199,102 @@ export default function Dashboard() {
           </ReactFlow>
         </div>
 
-        {/* RIGHT PANEL */}
-        <div className="w-1/2 overflow-y-auto p-10 bg-gray-100 flex flex-col items-center">
+        {/* RIGHT PANEL: DARK FIU-IND REPORT WITH PRINT TARGET */}
+        <div className="w-1/2 overflow-y-auto p-8 bg-slate-950 flex flex-col items-center">
           
-          {/* A4 PAPER CONTAINER */}
-          <div className="bg-white text-black w-full max-w-3xl shadow-xl border border-gray-300 p-10 rounded-sm">
-            
-            {/* HEADER */}
-            <div className="flex items-center justify-between mb-6 border-b-2 border-black pb-4">
-              <div className="flex flex-col">
-                <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">FIU-IND</h1>
-                <h2 className="text-sm font-bold text-gray-600 uppercase tracking-widest">Financial Intelligence Unit - India</h2>
-                <h3 className="text-lg font-semibold mt-2">SUSPICIOUS TRANSACTION REPORT (STR)</h3>
-              </div>
+          {reportData ? (
+            <div 
+              ref={reportRef} 
+              className="bg-slate-950 text-slate-300 p-8 rounded-xl shadow-2xl border border-slate-800 w-full max-w-3xl font-sans relative 
+                         print:bg-white print:text-black print:shadow-none print:border-none print:p-10"
+            >
               
-              {/* AUDITOR BADGE */}
-              {auditResult && (
-                <div className={`px-4 py-2 text-sm font-bold border-2 ${auditResult.approved ? 'border-green-600 text-green-700 bg-green-50' : 'border-red-600 text-red-700 bg-red-50'}`}>
-                  {auditResult.approved ? 'APPROVED FOR FILING' : 'AUDIT REJECTED'}
+              {/* Official Header */}
+              <div className="border-b-2 border-blue-900 print:border-black pb-6 mb-8 flex justify-between items-start">
+                <div>
+                  <h1 className="text-4xl font-black text-blue-500 print:text-black tracking-wider">FIU-IND</h1>
+                  <h2 className="text-xs font-semibold tracking-widest text-slate-400 print:text-gray-600 mt-1 uppercase">Financial Intelligence Unit - India</h2>
+                  <h3 className="text-lg font-bold text-slate-100 print:text-black mt-4">SUSPICIOUS TRANSACTION REPORT (STR)</h3>
                 </div>
-              )}
-            </div>
+                
+                {/* Dynamic Badge - Hidden during print for a cleaner official look */}
+                {auditResult && (
+                  <div className={`px-4 py-2 border font-bold rounded text-sm print:hidden ${auditResult.approved ? 'bg-blue-900/30 border-blue-500 text-blue-400' : 'bg-red-900/30 border-red-500 text-red-400'}`}>
+                    {auditResult.approved ? 'APPROVED FOR FILING' : 'AUDIT REJECTED'}
+                  </div>
+                )}
+              </div>
 
-            {/* MARKDOWN CONTAINER */}
-            <div className="prose prose-sm max-w-none text-black prose-headings:text-black prose-headings:border-b prose-headings:border-gray-200 prose-headings:pb-1 prose-strong:text-black">
-               <ReactMarkdown>{reportText}</ReactMarkdown>
+              {/* PART 1 & 2 & 3: Details */}
+              <div className="grid grid-cols-2 gap-6 mb-6">
+                <div className="bg-slate-900 print:bg-transparent p-4 rounded border border-slate-800 print:border-gray-300">
+                  <h4 className="text-blue-400 print:text-black text-sm font-bold mb-3 border-b border-slate-800 print:border-gray-300 pb-2">PART 1: DETAILS OF REPORT</h4>
+                  <p className="text-sm mb-1"><span className="text-slate-500 print:text-gray-600">Date of sending:</span> {reportData.part_1_date}</p>
+                  <p className="text-sm"><span className="text-slate-500 print:text-gray-600">Replacement Report?:</span> {reportData.part_1_replacement || 'No'}</p>
+                </div>
+                
+                <div className="bg-slate-900 print:bg-transparent p-4 rounded border border-slate-800 print:border-gray-300">
+                  <h4 className="text-blue-400 print:text-black text-sm font-bold mb-3 border-b border-slate-800 print:border-gray-300 pb-2">PART 2 & 3: INSTITUTION</h4>
+                  <p className="text-sm mb-1"><span className="text-slate-500 print:text-gray-600">Name of Bank:</span> {reportData.part_2_bank}</p>
+                  <p className="text-sm"><span className="text-slate-500 print:text-gray-600">Branch:</span> {reportData.part_3_branch}</p>
+                </div>
+              </div>
+
+              {/* PART 4 & 5: Individuals & Entities */}
+              <div className="bg-slate-900 print:bg-transparent p-4 rounded border border-slate-800 print:border-gray-300 mb-6">
+                <h4 className="text-blue-400 print:text-black text-sm font-bold mb-3 border-b border-slate-800 print:border-gray-300 pb-2">PART 4 & 5: LINKED INDIVIDUALS / ENTITIES</h4>
+                <ul className="text-sm space-y-1">
+                  {reportData.part_4_individuals?.map((person: string, idx: number) => (
+                    <li key={idx} className="text-slate-300 print:text-black">• {person}</li>
+                  ))}
+                  {reportData.part_5_entities?.map((entity: string, idx: number) => (
+                    <li key={idx} className="text-slate-300 print:text-black">• {entity}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* PART 6: ACCOUNTS (INTERACTIVE HOVER STRIP) */}
+              <div className="bg-slate-900 print:bg-transparent p-4 rounded border border-slate-800 print:border-gray-300 mb-6 relative overflow-hidden">
+                <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] px-2 py-1 font-bold rounded-bl-lg print:hidden">INTERACTIVE</div>
+                <h4 className="text-blue-400 print:text-black text-sm font-bold mb-4 border-b border-slate-800 print:border-gray-300 pb-2">PART 6: LIST OF ACCOUNTS <span className="text-slate-500 text-xs font-normal print:hidden">(Hover to locate)</span></h4>
+                <div className="flex flex-wrap gap-2">
+                  {reportData.part_6_accounts?.map((accountId: string) => (
+                    <span 
+                      key={accountId}
+                      onMouseEnter={() => setHoveredNodeId(String(accountId))}
+                      onMouseLeave={() => setHoveredNodeId(null)}
+                      className="font-mono text-xs bg-slate-950 print:bg-transparent border border-slate-700 print:border-none px-3 py-1.5 print:p-0 rounded cursor-pointer transition-all duration-200 hover:bg-blue-600 hover:border-blue-400 hover:text-white hover:scale-105 print:after:content-[',_'] last:print:after:content-['']"
+                    >
+                      {accountId}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* PART 7: SUSPICIOUS TRANSACTION DETAILS */}
+              <div className="bg-slate-900 print:bg-transparent p-5 rounded border border-slate-800 print:border-gray-300 mb-6">
+                  <h4 className="text-blue-400 print:text-black text-sm font-bold mb-4 border-b border-slate-800 print:border-gray-300 pb-2">PART 7: DETAILS OF SUSPICIOUS TRANSACTION</h4>
+                  <p className="text-sm mb-3"><span className="text-slate-500 print:text-gray-800 font-bold">7.1 Reason for suspicion:</span> {reportData.part_7_reason}</p>
+                  <p className="text-sm leading-relaxed text-slate-300 print:text-black">
+                    <span className="text-slate-500 print:text-gray-800 font-bold block mb-1">7.2 Grounds of Suspicion:</span>
+                    {reportData.part_7_grounds}
+                  </p>
+              </div>
+
+              {/* PART 8: ACTION TAKEN */}
+              <div className="bg-slate-900 print:bg-transparent p-4 rounded border border-slate-800 print:border-gray-300">
+                  <h4 className="text-blue-400 print:text-black text-sm font-bold mb-2 border-b border-slate-800 print:border-gray-300 pb-2">PART 8: DETAILS OF ACTION TAKEN</h4>
+                  <p className="text-sm text-slate-300 print:text-black">{reportData.part_8_action}</p>
+              </div>
+
             </div>
-          </div>
-          
-          {/* DEBUG PANEL */}
-          {activeParagraphs.length > 0 && (
-            <div className="mt-8 p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg text-sm text-blue-300 w-full max-w-3xl">
-              <strong>Active Node Triggers:</strong> {activeParagraphs.join(', ')}
-              <br/>
-              <span className="text-xs text-slate-400 italic">
-                (In the next step, we will use these active triggers to actually highlight the text above!)
-              </span>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-slate-600 border-2 border-dashed border-slate-800 rounded-xl w-full max-w-3xl">
+               <FileText className="w-12 h-12 mb-4 opacity-50" />
+               <p>Awaiting investigation payload...</p>
             </div>
           )}
+
         </div>
       </div>
     </div>
