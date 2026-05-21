@@ -17,65 +17,61 @@ import ReactMarkdown from 'react-markdown';
 import { ShieldAlert, Activity, FileText } from 'lucide-react';
 
 export default function Dashboard() {
-  // --- UI STATE ---
+  // UI STATE
   const [loading, setLoading] = useState(false);
   const [activeParagraphs, setActiveParagraphs] = useState<string[]>([]);
   
-  // --- DATA STATE ---
+  // DATA STATE
   const [reportText, setReportText] = useState<string>("Awaiting investigation payload...");
   const [linkageMap, setLinkageMap] = useState<Record<string, string>>({});
   const [auditResult, setAuditResult] = useState<any>(null);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
 
-  // React Flow Handlers
+  // REACT FLOW HANDLERS
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), []);
   const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)), []);
 
-  // --- API CALL TO YOUR PYTHON BACKEND ---
+  // API INVESTIGATION HANDLER
   const runInvestigation = async () => {
     setLoading(true);
     try {
-      // Mock alert payload - in a real app, this comes from an input field
       const payload = {
-        alert_id: "ALRT-2026-99482",
-        account_number: "8001002",
-        risk_type: "Velocity Anomaly",
+        alert_id: "ALRT-IBM-001",
+        account_number: "100428660",
+        risk_type: "High-Value Laundering Transfer",
         timestamp: new Date().toISOString()
       };
 
-      // Call your FastAPI server
       const response = await axios.post('http://127.0.0.1:8000/api/investigate', payload, {
-        timeout: 300000 // Tell the browser to wait up to 5 minutes for the AI to finish thinking
-      },);
-      const data= response.data;
+        timeout: 600000 
+      });
+      
+      const data = response.data;
       setReportText(data.final_report_markdown);
       setLinkageMap(data.ui_linkage_map);
       setAuditResult(data.audit_result);
 
-      // Transform backend Neo4j data into React Flow format
-     // Smart Layout & Styling for Nodes
+      // NODE FORMATTING
       const formattedNodes = data.graph_data.nodes.map((n: any, index: number) => {
-        // Color code based on entity type
-        let bgColor = '#1e293b'; // Default dark blue
+        let bgColor = '#1e293b'; 
         let borderColor = '#475569';
         
         if (n.labels.includes("Customer")) {
-          bgColor = '#064e3b'; // Emerald dark
+          bgColor = '#064e3b'; 
           borderColor = '#10b981';
         } else if (n.labels.includes("Merchant") || n.labels.includes("ATM")) {
-          bgColor = '#7f1d1d'; // Red dark
+          bgColor = '#7f1d1d'; 
           borderColor = '#ef4444';
         } else if (n.labels.includes("Account")) {
-          bgColor = '#1e3a8a'; // Royal blue
+          bgColor = '#1e3a8a'; 
           borderColor = '#3b82f6';
         }
 
         return {
           id: n.id,
-          // Arrange them diagonally so they never overlap
           position: { x: 100 + (index * 250), y: 100 + (index * 150) }, 
-          data: { label: `${n.labels[0]}\n${n.properties.name || n.id}` }, // Show the actual name on the node!
+          data: { label: `${n.labels[0]}\n${n.properties.name || n.id}` }, 
           style: { 
             background: bgColor, 
             color: 'white', 
@@ -88,6 +84,7 @@ export default function Dashboard() {
         };
       });
       
+      // EDGE FORMATTING
       const formattedEdges = data.graph_data.edges.map((e: any) => ({
         id: e.id,
         source: e.source,
@@ -107,12 +104,10 @@ export default function Dashboard() {
     setLoading(false);
   };
 
-  // --- THE MAGIC HOVER/CLICK LOGIC ---
+  // NODE CLICK HANDLER
   const handleNodeClick = (event: any, node: Node) => {
-    // Look up the node ID in the linkage map we got from the backend
     const linkedParagraphsStr = linkageMap[node.id]; 
     if (linkedParagraphsStr) {
-      // Example: "Paragraph 1, Paragraph 3" -> ["Paragraph 1", "Paragraph 3"]
       const paragraphs = linkedParagraphsStr.split(',').map(s => s.trim());
       setActiveParagraphs(paragraphs);
     } else {
@@ -120,8 +115,8 @@ export default function Dashboard() {
     }
   };
 
+  // PANE CLICK HANDLER
   const handlePaneClick = () => {
-    // Clear highlights when clicking empty space
     setActiveParagraphs([]);
   };
 
@@ -146,7 +141,7 @@ export default function Dashboard() {
       {/* SPLIT WINDOW LAYOUT */}
       <div className="flex flex-1 overflow-hidden">
         
-        {/* LEFT PANEL: NETWORK GRAPH (50%) */}
+        {/* LEFT PANEL */}
         <div className="w-1/2 border-r border-slate-800 relative bg-slate-950">
           <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-slate-900/80 p-2 rounded-md border border-slate-700">
             <Activity className="text-emerald-400 w-5 h-5" />
@@ -168,30 +163,37 @@ export default function Dashboard() {
           </ReactFlow>
         </div>
 
-        {/* RIGHT PANEL: GENERATED SAR REPORT (50%) */}
-        <div className="w-1/2 overflow-y-auto p-8 bg-slate-900">
-          <div className="flex items-center justify-between mb-8 border-b border-slate-800 pb-4">
-            <div className="flex items-center gap-2">
-              <FileText className="text-blue-400 w-6 h-6" />
-              <h2 className="text-2xl font-bold text-white">Official SAR Narrative</h2>
-            </div>
+        {/* RIGHT PANEL */}
+        <div className="w-1/2 overflow-y-auto p-10 bg-gray-100 flex flex-col items-center">
+          
+          {/* A4 PAPER CONTAINER */}
+          <div className="bg-white text-black w-full max-w-3xl shadow-xl border border-gray-300 p-10 rounded-sm">
             
-            {/* Auditor Badge */}
-            {auditResult && (
-              <span className={`px-3 py-1 rounded-full text-xs font-bold ${auditResult.approved ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50' : 'bg-red-500/20 text-red-400 border border-red-500/50'}`}>
-                {auditResult.approved ? '✅ Auditor Approved' : '⚠️ Audit Failed'}
-              </span>
-            )}
-          </div>
+            {/* HEADER */}
+            <div className="flex items-center justify-between mb-6 border-b-2 border-black pb-4">
+              <div className="flex flex-col">
+                <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">FIU-IND</h1>
+                <h2 className="text-sm font-bold text-gray-600 uppercase tracking-widest">Financial Intelligence Unit - India</h2>
+                <h3 className="text-lg font-semibold mt-2">SUSPICIOUS TRANSACTION REPORT (STR)</h3>
+              </div>
+              
+              {/* AUDITOR BADGE */}
+              {auditResult && (
+                <div className={`px-4 py-2 text-sm font-bold border-2 ${auditResult.approved ? 'border-green-600 text-green-700 bg-green-50' : 'border-red-600 text-red-700 bg-red-50'}`}>
+                  {auditResult.approved ? 'APPROVED FOR FILING' : 'AUDIT REJECTED'}
+                </div>
+              )}
+            </div>
 
-          {/* Report Markdown Container */}
-          <div className="prose prose-invert prose-blue max-w-none">
-             <ReactMarkdown>{reportText}</ReactMarkdown>
+            {/* MARKDOWN CONTAINER */}
+            <div className="prose prose-sm max-w-none text-black prose-headings:text-black prose-headings:border-b prose-headings:border-gray-200 prose-headings:pb-1 prose-strong:text-black">
+               <ReactMarkdown>{reportText}</ReactMarkdown>
+            </div>
           </div>
           
-          {/* Debug Panel to show which paragraphs are currently active/highlighted */}
+          {/* DEBUG PANEL */}
           {activeParagraphs.length > 0 && (
-            <div className="mt-8 p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg text-sm text-blue-300">
+            <div className="mt-8 p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg text-sm text-blue-300 w-full max-w-3xl">
               <strong>Active Node Triggers:</strong> {activeParagraphs.join(', ')}
               <br/>
               <span className="text-xs text-slate-400 italic">

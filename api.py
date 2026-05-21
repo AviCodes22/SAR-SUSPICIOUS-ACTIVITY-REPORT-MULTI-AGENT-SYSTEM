@@ -27,11 +27,11 @@ class AlertPayload(BaseModel):
     timestamp: str
 
 #Create the main POST endpoint
+# Create the main POST endpoint
 @app.post("/api/investigate")
 def trigger_investigation(alert: AlertPayload):
     print(f"🚀 Incoming Alert Received from UI: {alert.alert_id} for Account {alert.account_number}")
     
-    # Map the incoming API data to your LangGraph state structure
     initial_state_payload = {
         "messages": [],
         "raw_alert": {
@@ -54,14 +54,17 @@ def trigger_investigation(alert: AlertPayload):
         # Fire the autonomous agents!
         pipeline_results = system_pipeline.invoke(initial_state_payload)
         
-        # Return the critical UI components back to the frontend
+        # Extract structured audit data safely
+        audit_payload = pipeline_results.get("audit_review", {})
+        
+        # Return the critical UI components back to the frontend with unique keys
         return {
             "status": "success",
-            "graph_data": pipeline_results.get("graph_visualization", {}),
             "typology_scan": pipeline_results.get("typology_reasoning", {}),
-            "audit_result": pipeline_results.get("audit_review", {}),
-            "final_report_markdown": pipeline_results.get("narrative_draft", ""),
-            "ui_linkage_map": pipeline_results.get("forensic_linkages", {})
+            "ui_linkage_map": pipeline_results.get("forensic_linkages", {}),
+            "final_report_markdown": pipeline_results.get("narrative_draft", "No narrative generated."),
+            "audit_result": audit_payload,
+            "graph_data": pipeline_results.get("graph_visualization", {"nodes": [], "edges": []})
         }
     except Exception as e:
         print(f"❌ API Execution Error: {e}")

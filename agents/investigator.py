@@ -91,39 +91,59 @@ def generate_graph_query(state: AgentState) -> Dict[str, Any]:
     return {"generated_query": generated_cypher}
 
 
-def execute_and_serialize_graph(state: AgentState) -> Dict[str, Any]:
-    """
-    Executes the query on Neo4j safely. Automatically engages fallback
-    payload generation if the data returns empty to maintain UI visualization capability.
-    """
-    query = state.get("generated_query", "").strip()
-    account_number = state.get("alert_details", {}).get("account_number", "8001002")
+def execute_and_serialize_graph(state: dict) -> dict:
+    from langchain_community.graphs import Neo4jGraph
+    import os
     
-    results = []
-    
-    if query and len(query) > 10:
-        try:
-            print(f"Executing Cypher path query verification on Neo4j...")
-            results = graph.query(query, {"account_number": str(account_number)})
-        except Exception as e:
-            print(f"⚠️ Database exception handled: {e}")
-            results = []
+    # 1. Get the target account
+    account_number = state.get("raw_alert", {}).get("account_number", "")
+    print(f"🔍 Investigator Agent querying Neo4j for Account: {account_number}")
 
-    # Safe fallback parsing logic
-    if results and len(results) > 0:
-        nodes_payload = results[0].get("nodes", [])
-        edges_payload = results[0].get("edges", [])
-    else:
-        print(f"🔄 Injecting safe mock visualization fallback payload for account: {account_number}.")
-        nodes_payload = [
-            {"id": "N1", "labels": ["Account"], "properties": {"id": account_number, "status": "Suspicious", "holder": "Avdhoot Patil"}},
-            {"id": "N2", "labels": ["Merchant"], "properties": {"name": "ATM Terminal 4", "location": "Pune, MH"}},
-            {"id": "N3", "labels": ["Customer"], "properties": {"name": "Mahi Parmar", "kyc_status": "Verified"}}
-        ]
-        edges_payload = [
-            {"id": "E101", "type": "TRANSFER_TO", "source": "N1", "target": "N2", "properties": {"amount": 49500, "currency": "INR"}},
-            {"id": "E102", "type": "OWNS", "source": "N3", "target": "N1", "properties": {"opened_date": "2024-05-18"}}
-        ]
+    # 2. Connect to DB
+    graph = Neo4jGraph(
+        url=os.getenv("NEO4J_URI", "neo4j://localhost:7687"),
+        username=os.getenv("NEO4J_USERNAME", "neo4j"),
+        password=os.getenv("NEO4J_PASSWORD", "your_secure_password")
+    )
+
+    # 3. The REAL IBM Dataset Cypher Query
+    query = """
+    MATCH (a:Account {id: $account_id})-[r:TRANSFERRED]->(b:Account)
+    RETURN a.id AS sender, r.amount AS amount, r.is_laundering AS is_laundering, b.id AS receiver, r.timestamp AS time
+    LIMIT 25
+    """
+    
+    results = graph.query(query, params={"account_id": str(account_number)})
+    
+    if not results:
+        print(f"❌ FATAL: Account {account_number} not found in Neo4j! Did you seed the DB?")
+        return {"graph_visualization": {"nodes": [], "edges": []}}
+
+    # 4. Serialize real data for the React UI
+    nodes_payload = []
+    edges_payload = []
+    seen_nodes = set()
+
+    for i, record in enumerate(results):
+        sender = record["sender"]
+        receiver = record["receiver"]
+        
+        if sender not in seen_nodes:
+            nodes_payload.append({"id": sender, "labels": ["Account"], "properties": {"id": sender}})
+            seen_nodes.add(sender)
+        if receiver not in seen_nodes:
+            nodes_payload.append({"id": receiver, "labels": ["Account"], "properties": {"id": receiver}})
+            seen_nodes.add(receiver)
+            
+        edges_payload.append({
+            "id": f"E{i}", 
+            "type": "TRANSFERRED", 
+            "source": sender, 
+            "target": receiver, 
+            "properties": {"amount": record["amount"], "is_laundering": record["is_laundering"]}
+        })
+
+    print(f"✅ Extracted {len(nodes_payload)} real nodes and {len(edges_payload)} real edges.")
     
     return {
         "graph_visualization": {

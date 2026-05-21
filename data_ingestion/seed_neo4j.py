@@ -6,60 +6,64 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Setup database driver connection parameters from your core .env file
+# Setup Neo4j connection
 URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
-USER = os.getenv("NEO4J_USERNAME", "neo4j")
-PASSWORD = os.getenv("NEO4J_PASSWORD")
-DATABASE = os.getenv("NEO4J_DATABASE", "bank-transactions")
+USERNAME = os.getenv("NEO4J_USERNAME", "neo4j")
+PASSWORD = os.getenv("NEO4J_PASSWORD", "your_secure_password") # Make sure this matches your DB password!
 
-driver = GraphDatabase.driver(URI, auth=(USER, PASSWORD))
+driver = GraphDatabase.driver(URI, auth=(USERNAME, PASSWORD))
 
-def ingest_kaggle_aml_data(csv_path: str, row_limit: int = 5000):
-    """
-    Parses structural financial rows from the Kaggle AML dataset 
-    and injects them as linked graph components into Neo4j.
-    """
-    if not os.path.exists(csv_path):
-        print(f"❌ Error: Could not find the file at {csv_path}. Please check your path configuration.")
-        return
+CSV_PATH = "HI-Small_Trans.csv"
 
-    print(f"Reading first {row_limit} lines from Kaggle AML dataset...")
-    df = pd.read_csv(csv_path, nrows=row_limit)
+def seed_graph_database():
+    print("🚀 Loading IBM HI-Small_Trans.csv into Pandas...")
     
-    # Standardize column naming formatting properties to prevent string dictionary escaping syntax errors
-    df.columns = df.columns.str.strip().str.replace('.', '_', regex=False)
+    # Read the CSV. Pandas automatically renames duplicate columns (Account -> Account.1)
+    df = pd.read_csv(CSV_PATH)
+    
+    # For testing, let's just take the first 5,000 rows so it loads fast on your laptop
+    df = df.head(5000)
+    
+    print(f"✅ Loaded {len(df)} transactions. Pushing to Neo4j...")
 
-    # Cypher query optimizing node merges and edge properties mapping execution batches
-    cypher_query = """
-    UNWIND $rows AS row
-    MERGE (source:Account {id: toString(row.Account)})
-    ON CREATE SET source.bank = row.From_Bank
-    
-    MERGE (target:Account {id: toString(row.Account_1})
-    ON CREATE SET target.bank = row.To_Bank
-    
-    CREATE (source)-[tx:TRANSFERRED {
-        timestamp: row.Timestamp,
-        amount: toFloat(row.Amount_Received),
-        currency: row.Receiving_Currency,
-        format: row.Payment_Format,
-        is_laundering: toInteger(row.Is_Laundering)
-    }]->(target)
-    """
-    
-    records_payload = df.to_dict(orient='records')
-    
-    print(f"Connecting to database '{DATABASE}' and injecting graph topology paths...")
-    with driver.session(database=DATABASE) as session:
-        # Enforce uniqueness constraint to maximize query path lookup processing speed
-        session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (a:Account) REQUIRE a.id IS UNIQUE")
+    with driver.session() as session:
+        # 1. Clear existing database to start fresh
+        session.run("MATCH (n) DETACH DELETE n")
         
-        # Batch execute transactional node mapping blocks
-        session.run(cypher_query, rows=records_payload)
-        
-    print("✅ Neo4j graph dataset successfully built!")
+        # 2. Iterate through dataframe and create nodes/edges
+        for index, row in df.iterrows():
+            sender_id = str(row['Account'])
+            receiver_id = str(row['Account.1'])
+            amount = float(row['Amount Paid'])
+            is_laundering = int(row['Is Laundering'])
+            
+            # Cypher query to create the structural map
+            cypher_query = """
+            MERGE (sender:Account {id: $sender_id})
+            MERGE (receiver:Account {id: $receiver_id})
+            CREATE (sender)-[r:TRANSFERRED {
+                amount: $amount,
+                is_laundering: $is_laundering,
+                currency: $currency,
+                timestamp: $timestamp
+            }]->(receiver)
+            """
+            
+            session.run(cypher_query, 
+                        sender_id=sender_id, 
+                        receiver_id=receiver_id,
+                        amount=amount,
+                        is_laundering=is_laundering,
+                        currency=row['Payment Currency'],
+                        timestamp=row['Timestamp'])
+            
+            if index % 500 == 0 and index > 0:
+                print(f"Processed {index} transactions...")
+
+    print("🏁 Neo4j Seeding Complete! The graph is now live.")
 
 if __name__ == "__main__":
-    # Update this file location path string to match your computer layout folder download target
-    TARGET_KAGGLE_CSV = "d:/EDAI SEM 4/datasets/HI-Small_Trans.csv"
-    ingest_kaggle_aml_data(TARGET_KAGGLE_CSV, row_limit=5000)
+    if not os.path.exists(CSV_PATH):
+        print(f"❌ Error: Could not find {CSV_PATH} in the root directory.")
+    else:
+        seed_graph_database()
