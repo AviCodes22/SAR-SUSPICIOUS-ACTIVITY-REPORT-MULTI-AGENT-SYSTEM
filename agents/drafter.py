@@ -5,7 +5,6 @@ import time
 from typing import TypedDict, List, Dict, Any
 from dotenv import load_dotenv
 
-# Load configurations from your .env file
 load_dotenv()
 
 from langgraph.graph import StateGraph, END
@@ -95,7 +94,7 @@ def prep_str_form_fields(state: AgentState) -> Dict[str, Any]:
 
 
 def generate_formal_narrative(state: AgentState) -> Dict[str, Any]:
-    # --- EXTRACT DATA FROM STATE ---
+    
     typology_json = json.dumps(state.get("typology_reasoning", {}))
     graph_json = json.dumps(state.get("graph_visualization", {}))
 
@@ -128,7 +127,7 @@ def generate_formal_narrative(state: AgentState) -> Dict[str, Any]:
         ("human", "Write the FIU-IND STR using this data:\nFindings: {analytical_findings}\nGraph: {graph_json}")
     ])
     
-    # --- EXECUTE THE LLM ---
+   
     print("✍️ Invoking local Llama model via GPU...")
     chain = prompt | llm
     
@@ -138,7 +137,6 @@ def generate_formal_narrative(state: AgentState) -> Dict[str, Any]:
         "graph_json": graph_json
     })
     
-    # --- UPGRADED ROBUST PARSING LOGIC ---
     raw_text = ai_raw_response.strip()
     
     # Clean up outer markdown block wrappers if present

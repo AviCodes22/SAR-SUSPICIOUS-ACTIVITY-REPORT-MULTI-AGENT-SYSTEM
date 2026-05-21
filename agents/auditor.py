@@ -3,7 +3,7 @@ import json
 from typing import TypedDict, List, Dict, Any
 from dotenv import load_dotenv
 
-# Load configuration parameters from your local .env file
+
 load_dotenv()
 
 from langgraph.graph import StateGraph, END
@@ -14,7 +14,7 @@ from langchain_ollama import OllamaLLM
 # =====================================================================
 # 1. Direct Mistral Local Initialization
 # =====================================================================
-# Ensure you have run `ollama pull mistral` before executing this script!
+
 llm = OllamaLLM(
     model="llama3.2", 
     temperature=0.1, 
@@ -104,7 +104,6 @@ auditor_agent = auditor_workflow.compile()
 if __name__ == "__main__":
     print("Initializing Auditor Agent framework using local Mistral engine...")
     
-    # Simulate a full state package context arriving from all previous pipeline nodes
     mock_graph_visualization = {
         "nodes": [
             {"id": "ACC-7731920", "labels": ["Account"], "properties": {"holder": "Avdhoot Patil"}},

@@ -14,7 +14,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows your Streamlit/React frontend to talk to this server
+    allow_origins=["*"],  # Allows  Streamlit/React frontend to talk to this server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

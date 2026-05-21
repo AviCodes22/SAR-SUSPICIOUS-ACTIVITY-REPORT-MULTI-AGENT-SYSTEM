@@ -12,10 +12,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import OllamaLLM
 from langchain_neo4j import Neo4jGraph
 
-# Initialize models and baseline graph configurations
 llm = OllamaLLM(model="llama3", temperature=0.0)
 
-# FIX 1: Pulled values directly from environment keys correctly
 graph = Neo4jGraph(
     url=os.getenv("NEO4J_URI", "neo4j://127.0.0.1:7687"),
     username=os.getenv("NEO4J_USERNAME", "neo4j"),

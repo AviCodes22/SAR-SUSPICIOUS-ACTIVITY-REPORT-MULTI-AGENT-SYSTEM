@@ -9,13 +9,11 @@ from agents import drafter
 from agents import auditor
 import re
 
-# Load database passwords and global configs
 load_dotenv()
 
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage
 
-# Import processing node blocks directly from your individual agent modules
 from agents.investigator import extract_alert_entities, execute_and_serialize_graph
 from agents.scout import analyze_typology_patterns
 from agents.drafter import prep_str_form_fields, generate_formal_narrative
